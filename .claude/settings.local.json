@@ -48,7 +48,8 @@
       "Bash(git commit -m ' *)",
       "Bash(git config *)",
       "Bash(git branch *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "WebFetch(domain:curateco.vercel.app)"
     ]
   }
 }
