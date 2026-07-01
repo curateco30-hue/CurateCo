@@ -6,7 +6,7 @@ export async function getStoreBySlug(slug: string) {
   const { data: store } = await supabase
     .from("curator_stores")
     .select(
-      "id, curator_id, store_slug, intro_headline_prefix, intro_text, featured_video_url, featured_video_product_id, curators(brand_name, brand_color, profile_photo_url)",
+      "id, curator_id, store_slug, intro_headline_prefix, intro_text, featured_video_url, featured_video_product_id",
     )
     .eq("store_slug", slug)
     .eq("is_active", true)
@@ -14,11 +14,14 @@ export async function getStoreBySlug(slug: string) {
 
   if (!store) return null;
 
-  const curatorInfo = store.curators as unknown as {
-    brand_name: string;
-    brand_color: string;
-    profile_photo_url: string | null;
-  } | null;
+  // curators RLS only allows owner-or-admin reads, so a public storefront
+  // visitor's curator info comes from the public-safe view instead of an
+  // embedded join (which silently returns null for anonymous requests).
+  const { data: curatorInfo } = await supabase
+    .from("curator_public_profile")
+    .select("brand_name, brand_color, profile_photo_url")
+    .eq("id", store.curator_id)
+    .single();
 
   if (!curatorInfo) return null;
 
