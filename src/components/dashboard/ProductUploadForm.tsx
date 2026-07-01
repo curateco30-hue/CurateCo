@@ -81,7 +81,8 @@ function ProductUploadForm({ brandId }: ProductUploadFormProps) {
       });
       if (insertError) throw insertError;
 
-      await notifyProductSubmitted(brandId, values.name);
+      // Best-effort — must never block the redirect below.
+      notifyProductSubmitted(brandId, values.name).catch(() => {});
 
       toast.success("Product submitted for approval.");
       router.push("/brand/products");

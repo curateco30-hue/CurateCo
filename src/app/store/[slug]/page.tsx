@@ -5,6 +5,8 @@ import { logAnalyticsEvent } from "@/lib/actions/analytics";
 import { StorefrontHero } from "@/components/store/StorefrontHero";
 import { FeaturedVideo } from "@/components/store/FeaturedVideo";
 import { ProductCard } from "@/components/store/ProductCard";
+import { NameGateOverlay } from "@/components/store/NameGateOverlay";
+import { PersonalizedHeading } from "@/components/store/PersonalizedHeading";
 
 interface StorefrontSettings {
   hero?: { overlayOpacity?: number; minHeightDesktop?: string; minHeightMobile?: string; headingFontSize?: string };
@@ -27,15 +29,15 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
   const store = await getStoreBySlug(slug);
   if (!store) notFound();
 
-  const settings = (await getTemplateSettings("storefront")) as StorefrontSettings;
-
-  const { data: storeProducts } = await store.supabase
-    .from("curator_store_products")
-    .select("id, product_id, curator_commission_pct, products(name, images, selling_price, sizes, colors)")
-    .eq("store_id", store.id)
-    .order("added_at", { ascending: true });
-
-  await logAnalyticsEvent({ eventType: "store_view", storeId: store.id, curatorId: store.curatorId });
+  const [settings, { data: storeProducts }] = await Promise.all([
+    getTemplateSettings("storefront") as Promise<StorefrontSettings>,
+    store.supabase
+      .from("curator_store_products")
+      .select("id, product_id, curator_commission_pct, products(name, images, selling_price, sizes, colors)")
+      .eq("store_id", store.id)
+      .order("added_at", { ascending: true }),
+    logAnalyticsEvent({ eventType: "store_view", storeId: store.id, curatorId: store.curatorId }),
+  ]);
 
   const products = (storeProducts ?? []).map((sp) => {
     const product = sp.products as unknown as {
@@ -64,7 +66,12 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
       : null;
 
   return (
-    <div>
+    <NameGateOverlay
+      storeSlug={store.slug}
+      curatorName={store.brandName}
+      curatorPhotoUrl={store.profilePhotoUrl}
+      brandColor={store.brandColor}
+    >
       <StorefrontHero
         photoUrl={store.profilePhotoUrl}
         brandColor={store.brandColor}
@@ -90,9 +97,11 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
       )}
 
       <div className="px-6 py-10 sm:px-12">
-        <p className="mb-5 font-display text-2xl font-medium text-[#1A1A1A]">
-          {settings.productCollection?.sectionHeading ?? "My Tastes"}
-        </p>
+        <PersonalizedHeading
+          storeSlug={store.slug}
+          fallback={settings.productCollection?.sectionHeading ?? "My Tastes"}
+          className="mb-5 font-display text-2xl font-medium text-[#1A1A1A]"
+        />
         {products.length === 0 ? (
           <p className="text-sm text-text-muted">This curator hasn&apos;t added any products yet.</p>
         ) : (
@@ -126,6 +135,6 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
           <p className="text-xs text-text-muted">{settings.footer.text}</p>
         </div>
       )}
-    </div>
+    </NameGateOverlay>
   );
 }

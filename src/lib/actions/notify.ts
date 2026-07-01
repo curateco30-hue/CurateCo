@@ -4,6 +4,20 @@ import { templates } from "@/lib/email/templates";
 import { formatNaira } from "@/lib/utils";
 import type { Json } from "@/types/database";
 
+/** Notifications are best-effort side effects. A failure here (transient
+ *  network blip, stale server-action reference right after a deploy, etc.)
+ *  must never bubble up and break the caller's primary flow (signup,
+ *  checkout, product approval...). */
+function safe<Args extends unknown[]>(fn: (...args: Args) => Promise<void>) {
+  return async (...args: Args) => {
+    try {
+      await fn(...args);
+    } catch (err) {
+      console.error("[notify] failed:", err);
+    }
+  };
+}
+
 async function insertNotification(
   recipientProfileId: string | null,
   type: string,
@@ -52,7 +66,7 @@ async function getBrandContact(brandId: string) {
   };
 }
 
-export async function notifyNewOrder(orderId: string, curatorId: string, brandId: string, totalAmount: number) {
+export const notifyNewOrder = safe(async (orderId: string, curatorId: string, brandId: string, totalAmount: number) => {
   const orderRef = orderId.slice(0, 8).toUpperCase();
   const total = formatNaira(totalAmount);
 
@@ -74,15 +88,17 @@ export async function notifyNewOrder(orderId: string, curatorId: string, brandId
   }
   const adminT = templates.newOrderForAdmin(orderRef, total);
   await sendEmail(ADMIN_EMAIL, adminT.subject, adminT.html);
-}
+});
 
-export async function notifyOrderConfirmation(customerEmail: string | null, customerName: string, orderId: string, totalAmount: number) {
-  if (!customerEmail) return;
-  const t = templates.orderConfirmation(customerName, orderId.slice(0, 8).toUpperCase(), formatNaira(totalAmount));
-  await sendEmail(customerEmail, t.subject, t.html);
-}
+export const notifyOrderConfirmation = safe(
+  async (customerEmail: string | null, customerName: string, orderId: string, totalAmount: number) => {
+    if (!customerEmail) return;
+    const t = templates.orderConfirmation(customerName, orderId.slice(0, 8).toUpperCase(), formatNaira(totalAmount));
+    await sendEmail(customerEmail, t.subject, t.html);
+  },
+);
 
-export async function notifyProductApproved(brandId: string, productName: string) {
+export const notifyProductApproved = safe(async (brandId: string, productName: string) => {
   const brand = await getBrandContact(brandId);
   if (!brand) return;
   const t = templates.productApproved(brand.name, productName);
@@ -90,9 +106,9 @@ export async function notifyProductApproved(brandId: string, productName: string
     insertNotification(brand.profileId, "product_approved", t.subject, productName),
     brand.email ? sendEmail(brand.email, t.subject, t.html) : Promise.resolve(),
   ]);
-}
+});
 
-export async function notifyProductRejected(brandId: string, productName: string, reason: string) {
+export const notifyProductRejected = safe(async (brandId: string, productName: string, reason: string) => {
   const brand = await getBrandContact(brandId);
   if (!brand) return;
   const t = templates.productRejected(brand.name, productName, reason);
@@ -100,7 +116,7 @@ export async function notifyProductRejected(brandId: string, productName: string
     insertNotification(brand.profileId, "product_rejected", t.subject, `${productName}: ${reason}`),
     brand.email ? sendEmail(brand.email, t.subject, t.html) : Promise.resolve(),
   ]);
-}
+});
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   new: "New",
@@ -111,46 +127,48 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-export async function notifyOrderStatusChanged(
-  orderId: string,
-  status: string,
-  curatorId: string | null,
-  brandId: string | null,
-  customerEmail: string | null,
-  customerName: string,
-) {
-  const statusLabel = ORDER_STATUS_LABELS[status] ?? status;
-  const orderRef = orderId;
+export const notifyOrderStatusChanged = safe(
+  async (
+    orderId: string,
+    status: string,
+    curatorId: string | null,
+    brandId: string | null,
+    customerEmail: string | null,
+    customerName: string,
+  ) => {
+    const statusLabel = ORDER_STATUS_LABELS[status] ?? status;
+    const orderRef = orderId;
 
-  const [curator, brand] = await Promise.all([
-    curatorId ? getCuratorContact(curatorId) : null,
-    brandId ? getBrandContact(brandId) : null,
-  ]);
-
-  if (curator) {
-    const t = templates.orderStatusChanged(curator.name, orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}/curator/dashboard`);
-    await Promise.all([
-      insertNotification(curator.profileId, "order_status", t.subject, statusLabel),
-      curator.email ? sendEmail(curator.email, t.subject, t.html) : Promise.resolve(),
+    const [curator, brand] = await Promise.all([
+      curatorId ? getCuratorContact(curatorId) : null,
+      brandId ? getBrandContact(brandId) : null,
     ]);
-  }
-  if (brand) {
-    const t = templates.orderStatusChanged(brand.name, orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}/brand/orders`);
-    await Promise.all([
-      insertNotification(brand.profileId, "order_status", t.subject, statusLabel),
-      brand.email ? sendEmail(brand.email, t.subject, t.html) : Promise.resolve(),
-    ]);
-  }
-  if (status === "delivered" && customerEmail) {
-    const t = templates.orderStatusChanged(customerName, orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}`);
-    await sendEmail(customerEmail, t.subject, t.html);
-  }
 
-  const adminT = templates.orderStatusChanged("Admin", orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}/admin/orders`);
-  await sendEmail(ADMIN_EMAIL, adminT.subject, adminT.html);
-}
+    if (curator) {
+      const t = templates.orderStatusChanged(curator.name, orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}/curator/dashboard`);
+      await Promise.all([
+        insertNotification(curator.profileId, "order_status", t.subject, statusLabel),
+        curator.email ? sendEmail(curator.email, t.subject, t.html) : Promise.resolve(),
+      ]);
+    }
+    if (brand) {
+      const t = templates.orderStatusChanged(brand.name, orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}/brand/orders`);
+      await Promise.all([
+        insertNotification(brand.profileId, "order_status", t.subject, statusLabel),
+        brand.email ? sendEmail(brand.email, t.subject, t.html) : Promise.resolve(),
+      ]);
+    }
+    if (status === "delivered" && customerEmail) {
+      const t = templates.orderStatusChanged(customerName, orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}`);
+      await sendEmail(customerEmail, t.subject, t.html);
+    }
 
-export async function notifyLowStock(brandId: string, productName: string, stock: number) {
+    const adminT = templates.orderStatusChanged("Admin", orderRef, statusLabel, `${process.env.NEXT_PUBLIC_APP_URL}/admin/orders`);
+    await sendEmail(ADMIN_EMAIL, adminT.subject, adminT.html);
+  },
+);
+
+export const notifyLowStock = safe(async (brandId: string, productName: string, stock: number) => {
   const brand = await getBrandContact(brandId);
   if (!brand) return;
   const t = templates.lowStock(brand.name, productName, stock);
@@ -159,29 +177,29 @@ export async function notifyLowStock(brandId: string, productName: string, stock
     brand.email ? sendEmail(brand.email, t.subject, t.html) : Promise.resolve(),
     sendEmail(ADMIN_EMAIL, t.subject, t.html),
   ]);
-}
+});
 
-export async function notifyNewCuratorRegistered(brandName: string) {
+export const notifyNewCuratorRegistered = safe(async (brandName: string) => {
   const t = templates.newCuratorRegistered(brandName);
   await sendEmail(ADMIN_EMAIL, t.subject, t.html);
-}
+});
 
-export async function notifyNewBrandRegistered(businessName: string) {
+export const notifyNewBrandRegistered = safe(async (businessName: string) => {
   const t = templates.newBrandRegistered(businessName);
   await sendEmail(ADMIN_EMAIL, t.subject, t.html);
-}
+});
 
-export async function notifyNewProductUploaded(businessName: string, productName: string) {
+export const notifyNewProductUploaded = safe(async (businessName: string, productName: string) => {
   const t = templates.newProductUploaded(businessName, productName);
   await sendEmail(ADMIN_EMAIL, t.subject, t.html);
-}
+});
 
-export async function notifyNewSupportMessage(senderName: string) {
+export const notifyNewSupportMessage = safe(async (senderName: string) => {
   const t = templates.newSupportMessage(senderName);
   await sendEmail(ADMIN_EMAIL, t.subject, t.html);
-}
+});
 
-export async function notifyCartAbandonment(customerEmail: string, storeName: string, storeSlug: string) {
+export const notifyCartAbandonment = safe(async (customerEmail: string, storeName: string, storeSlug: string) => {
   const t = templates.cartAbandonment(storeName, storeSlug);
   await sendEmail(customerEmail, t.subject, t.html);
-}
+});

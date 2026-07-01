@@ -77,7 +77,8 @@ export function BrandSignupForm() {
       });
       if (brandError) throw brandError;
 
-      await notifyBrandSignup(values.businessName);
+      // Best-effort — must never block the redirect below.
+      notifyBrandSignup(values.businessName).catch(() => {});
 
       toast.success("Brand account created — welcome to CurateCo.");
       router.push("/brand/dashboard");

@@ -44,7 +44,11 @@
       "Bash(node scripts/_seed_support.mjs)",
       "Bash(node scripts/_verify_template.mjs)",
       "Bash(rm -f scripts/_verify_template.mjs)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(git branch *)",
+      "Bash(git push *)"
     ]
   }
 }

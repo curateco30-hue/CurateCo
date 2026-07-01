@@ -10,8 +10,9 @@ import { curatorSignupSchema, type CuratorSignupInput } from "@/lib/validations/
 import { slugify } from "@/lib/utils";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { ColorPicker } from "@/components/ui/ColorPicker";
+import { ColorWheel } from "@/components/ui/ColorWheel";
 import { FileUpload } from "@/components/ui/FileUpload";
+import { ImageCropModal } from "@/components/ui/ImageCropModal";
 import { toast } from "@/components/ui/Toast";
 import { notifyCuratorSignup } from "@/lib/actions/signup-notify";
 
@@ -35,6 +36,7 @@ export function CuratorSignupForm() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [cropSource, setCropSource] = useState<{ url: string; name: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const {
@@ -110,7 +112,8 @@ export function CuratorSignupForm() {
       });
       if (storeError) throw storeError;
 
-      await notifyCuratorSignup(values.brandName);
+      // Best-effort — must never block the redirect below.
+      notifyCuratorSignup(values.brandName).catch(() => {});
 
       toast.success("Storefront created — welcome to CurateCo.");
       router.push("/curator/products");
@@ -138,7 +141,7 @@ export function CuratorSignupForm() {
         <Input label="Brand Name" placeholder="e.g. Debbie" {...register("brandName")} error={errors.brandName?.message} />
       </div>
 
-      <ColorPicker
+      <ColorWheel
         label="Brand Color"
         value={brandColor}
         onChange={(value) => setValue("brandColor", value, { shouldValidate: true })}
@@ -149,7 +152,10 @@ export function CuratorSignupForm() {
           label="Profile Photo"
           hint="This photo will appear as the hero background of your storefront. Use a high-quality, well-lit image."
           accept="image/*"
-          onFilesChange={(files) => setPhotoFile(files[0] ?? null)}
+          onFilesChange={(files) => {
+            const file = files[0];
+            if (file) setCropSource({ url: URL.createObjectURL(file), name: file.name });
+          }}
         />
         {photoPreviewUrl && (
           <div
@@ -185,6 +191,18 @@ export function CuratorSignupForm() {
           Log in
         </Link>
       </p>
+
+      <ImageCropModal
+        isOpen={!!cropSource}
+        imageSrc={cropSource?.url ?? null}
+        fileName={cropSource?.name ?? "profile.jpg"}
+        aspect={16 / 9}
+        onCancel={() => setCropSource(null)}
+        onConfirm={(file) => {
+          setPhotoFile(file);
+          setCropSource(null);
+        }}
+      />
     </form>
   );
 }

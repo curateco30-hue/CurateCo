@@ -1,3 +1,5 @@
+import { VideoEmbed } from "@/components/store/VideoEmbed";
+
 interface FeaturedVideoProps {
   videoUrl: string;
   productName: string | null;
@@ -10,15 +12,7 @@ function FeaturedVideo({ videoUrl, productName, sectionTitle }: FeaturedVideoPro
       <p className="mb-4 text-xs font-medium uppercase tracking-wide text-text-muted">
         {sectionTitle}
       </p>
-      <video
-        src={videoUrl}
-        controls
-        autoPlay
-        muted
-        loop
-        playsInline
-        className="aspect-video w-full max-w-md rounded-xl bg-black object-cover"
-      />
+      <VideoEmbed url={videoUrl} />
       {productName && (
         <p className="mt-3 text-sm font-medium text-[#1A1A1A]">Featuring: {productName}</p>
       )}

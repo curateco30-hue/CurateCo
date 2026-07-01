@@ -29,16 +29,17 @@ export default async function ProductDetailPage({
   const store = await getStoreBySlug(slug);
   if (!store) notFound();
 
-  const settings = (await getTemplateSettings("product_detail")) as ProductDetailSettings;
-
-  const { data: storeProduct } = await store.supabase
-    .from("curator_store_products")
-    .select(
-      "id, product_id, curator_commission_pct, why_curated_note, products(name, description, base_price, selling_price, images, sizes, colors, stock, brand_id)",
-    )
-    .eq("store_id", store.id)
-    .eq("product_id", id)
-    .single();
+  const [settings, { data: storeProduct }] = await Promise.all([
+    getTemplateSettings("product_detail") as Promise<ProductDetailSettings>,
+    store.supabase
+      .from("curator_store_products")
+      .select(
+        "id, product_id, curator_commission_pct, why_curated_note, products(name, description, base_price, selling_price, images, sizes, colors, stock, brand_id)",
+      )
+      .eq("store_id", store.id)
+      .eq("product_id", id)
+      .single(),
+  ]);
 
   if (!storeProduct) notFound();
 
@@ -56,27 +57,23 @@ export default async function ProductDetailPage({
 
   // brands RLS only allows owner-or-admin reads, so the brand name for a
   // public storefront visitor comes from the public-safe view instead.
-  const { data: brandProfile } = await store.supabase
-    .from("brand_public_profile")
-    .select("business_name")
-    .eq("id", product.brand_id)
-    .single();
+  const [{ data: brandProfile }, { data: relatedRaw }] = await Promise.all([
+    store.supabase.from("brand_public_profile").select("business_name").eq("id", product.brand_id).single(),
+    store.supabase
+      .from("curator_store_products")
+      .select("id, product_id, curator_commission_pct, products(name, images, selling_price)")
+      .eq("store_id", store.id)
+      .neq("product_id", id)
+      .limit(2),
+    logAnalyticsEvent({
+      eventType: "product_view",
+      storeId: store.id,
+      productId: id,
+      curatorId: store.curatorId,
+    }),
+  ]);
   const brandName = brandProfile?.business_name ?? "—";
   const finalPrice = product.selling_price * (1 + storeProduct.curator_commission_pct / 100);
-
-  await logAnalyticsEvent({
-    eventType: "product_view",
-    storeId: store.id,
-    productId: id,
-    curatorId: store.curatorId,
-  });
-
-  const { data: relatedRaw } = await store.supabase
-    .from("curator_store_products")
-    .select("id, product_id, curator_commission_pct, products(name, images, selling_price)")
-    .eq("store_id", store.id)
-    .neq("product_id", id)
-    .limit(2);
 
   const related = (relatedRaw ?? []).map((r) => {
     const p = r.products as unknown as { name: string; images: string[] | null; selling_price: number } | null;

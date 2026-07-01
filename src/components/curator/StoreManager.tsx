@@ -7,12 +7,13 @@ import { ExternalLink, Settings2, Trash2, PenLine } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { Textarea } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { FileUpload } from "@/components/ui/FileUpload";
 import { toast } from "@/components/ui/Toast";
 import { createClient } from "@/lib/supabase/client";
 import { formatNaira } from "@/lib/utils";
+import { getVideoEmbedInfo } from "@/lib/videoEmbed";
+import { VideoEmbed } from "@/components/store/VideoEmbed";
 
 interface StoreProduct {
   id: string;
@@ -44,10 +45,10 @@ function StoreManager({
   const [noteTarget, setNoteTarget] = useState<StoreProduct | null>(null);
   const [noteText, setNoteText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoLink, setVideoLink] = useState(featuredVideoUrl ?? "");
   const [videoProductId, setVideoProductId] = useState(featuredVideoProductId ?? "");
   const [currentVideoUrl, setCurrentVideoUrl] = useState(featuredVideoUrl);
-  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [isSavingVideo, setIsSavingVideo] = useState(false);
 
   const remove = async (product: StoreProduct) => {
     if (!confirm(`Remove ${product.name} from your store?`)) return;
@@ -88,40 +89,28 @@ function StoreManager({
     setNoteTarget(null);
   };
 
-  const uploadVideo = async () => {
-    if (!videoFile || !videoProductId) {
-      toast.error("Choose a video file and a product to link it to.");
+  const saveVideoLink = async () => {
+    const trimmed = videoLink.trim();
+    if (!trimmed || !videoProductId) {
+      toast.error("Add an Instagram or TikTok link and choose a product to link it to.");
       return;
     }
-    setIsUploadingVideo(true);
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Session expired. Please log in again.");
-
-      const ext = videoFile.name.split(".").pop() ?? "mp4";
-      const path = `${user.id}/featured.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("curator-videos")
-        .upload(path, videoFile, { upsert: true });
-      if (uploadError) throw uploadError;
-
-      const videoUrl = supabase.storage.from("curator-videos").getPublicUrl(path).data.publicUrl;
-
-      const { error: updateError } = await supabase
-        .from("curator_stores")
-        .update({ featured_video_url: videoUrl, featured_video_product_id: videoProductId })
-        .eq("id", storeId);
-      if (updateError) throw updateError;
-
-      setCurrentVideoUrl(videoUrl);
-      toast.success("Featured video updated.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload video.");
-    } finally {
-      setIsUploadingVideo(false);
+    if (getVideoEmbedInfo(trimmed).platform === "unknown") {
+      toast.error("Enter a valid Instagram or TikTok link.");
+      return;
     }
+    setIsSavingVideo(true);
+    const { error } = await supabase
+      .from("curator_stores")
+      .update({ featured_video_url: trimmed, featured_video_product_id: videoProductId })
+      .eq("id", storeId);
+    setIsSavingVideo(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setCurrentVideoUrl(trimmed);
+    toast.success("Featured video updated.");
   };
 
   return (
@@ -186,17 +175,16 @@ function StoreManager({
       <Card className="p-6">
         <p className="text-sm font-medium text-[#1A1A1A]">Featured Video</p>
         <p className="mb-4 text-xs text-text-secondary">
-          Autoplays at the top of the product listing and on your storefront.
+          Paste an Instagram Reel or TikTok link. It plays at the top of the product listing and
+          on your storefront.
         </p>
-        {currentVideoUrl && (
-          <video src={currentVideoUrl} controls className="mb-4 aspect-video w-full max-w-sm rounded-xl bg-black" />
-        )}
+        {currentVideoUrl && <VideoEmbed url={currentVideoUrl} className="mb-4" />}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-          <FileUpload
-            label="Video File"
-            accept="video/*"
-            kind="video"
-            onFilesChange={(files) => setVideoFile(files[0] ?? null)}
+          <Input
+            label="Instagram or TikTok Link"
+            placeholder="https://www.instagram.com/reel/..."
+            value={videoLink}
+            onChange={(e) => setVideoLink(e.target.value)}
             className="flex-1"
           />
           <Select
@@ -208,7 +196,7 @@ function StoreManager({
             className="sm:w-56"
           />
         </div>
-        <Button onClick={uploadVideo} isLoading={isUploadingVideo} className="mt-4">
+        <Button onClick={saveVideoLink} isLoading={isSavingVideo} className="mt-4">
           Save Video
         </Button>
       </Card>
