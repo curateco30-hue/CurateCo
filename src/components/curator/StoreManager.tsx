@@ -167,7 +167,7 @@ function StoreManager({
           </Link>
         </Card>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:gap-5 sm:grid-cols-3">
           {products.map((product) => (
             <Card key={product.id} className="flex flex-col overflow-hidden">
               <div className="relative aspect-square bg-beige">

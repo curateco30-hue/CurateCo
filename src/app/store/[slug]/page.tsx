@@ -102,28 +102,35 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
         {products.length === 0 ? (
           <p className="text-sm text-text-muted">This curator hasn&apos;t added any products yet.</p>
         ) : (
-          <div
-            className="grid gap-5"
-            style={{
-              gridTemplateColumns: `repeat(${Math.min(settings.productCollection?.gridColumns ?? 3, products.length) || 1}, minmax(0, 1fr))`,
-            }}
-          >
-            {products.map((product) => (
-              <ProductCard
-                key={product.storeProductId}
-                storeSlug={store.slug}
-                storeProductId={product.storeProductId}
-                productId={product.productId}
-                name={product.name}
-                price={product.price}
-                image={product.image}
-                sizes={product.sizes}
-                colors={product.colors}
-                curatorCommissionPct={product.curatorCommissionPct}
-                addToCartLabel={settings.global?.addToCartLabel ?? "Add to Cart"}
-              />
-            ))}
-          </div>
+          <>
+            <style>{`
+              .storefront-product-grid {
+                grid-template-columns: repeat(${Math.min(2, products.length)}, minmax(0, 1fr));
+              }
+              @media (min-width: 640px) {
+                .storefront-product-grid {
+                  grid-template-columns: repeat(${Math.min(settings.productCollection?.gridColumns ?? 3, products.length) || 1}, minmax(0, 1fr));
+                }
+              }
+            `}</style>
+            <div className="storefront-product-grid grid gap-3 sm:gap-5">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.storeProductId}
+                  storeSlug={store.slug}
+                  storeProductId={product.storeProductId}
+                  productId={product.productId}
+                  name={product.name}
+                  price={product.price}
+                  image={product.image}
+                  sizes={product.sizes}
+                  colors={product.colors}
+                  curatorCommissionPct={product.curatorCommissionPct}
+                  addToCartLabel={settings.global?.addToCartLabel ?? "Add to Cart"}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
