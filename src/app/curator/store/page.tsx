@@ -1,4 +1,5 @@
 import { getCurrentCuratorOrRedirect } from "@/lib/queries/curator";
+import { getMaxStoreProducts } from "@/lib/queries/platformSettings";
 import { StoreManager } from "@/components/curator/StoreManager";
 
 export const metadata = { title: "My Store — CurateCo" };
@@ -6,13 +7,21 @@ export const metadata = { title: "My Store — CurateCo" };
 export default async function CuratorStorePage() {
   const { supabase, store } = await getCurrentCuratorOrRedirect();
 
-  const { data } = await supabase
-    .from("curator_store_products")
-    .select("id, product_id, curator_commission_pct, why_curated_note, products(name, images, selling_price)")
-    .eq("store_id", store.id)
-    .order("added_at", { ascending: true });
+  const [{ data: productRows }, { data: videoRows }, maxStoreProducts] = await Promise.all([
+    supabase
+      .from("curator_store_products")
+      .select("id, product_id, curator_commission_pct, why_curated_note, products(name, images, selling_price)")
+      .eq("store_id", store.id)
+      .order("added_at", { ascending: true }),
+    supabase
+      .from("curator_store_videos")
+      .select("id, video_url, product_id, products(name)")
+      .eq("store_id", store.id)
+      .order("created_at", { ascending: true }),
+    getMaxStoreProducts(),
+  ]);
 
-  const storeProducts = (data ?? []).map((sp) => {
+  const storeProducts = (productRows ?? []).map((sp) => {
     const product = sp.products as unknown as {
       name: string;
       images: string[] | null;
@@ -29,20 +38,27 @@ export default async function CuratorStorePage() {
     };
   });
 
+  const videos = (videoRows ?? []).map((v) => ({
+    id: v.id,
+    videoUrl: v.video_url,
+    productId: v.product_id,
+    productName: (v.products as unknown as { name: string } | null)?.name ?? null,
+  }));
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="font-display text-2xl font-medium text-[#1A1A1A]">My Store</h1>
         <p className="text-sm text-text-secondary">
-          Manage the products, notes, and featured video on your storefront.
+          Manage the products, notes, and featured videos on your storefront.
         </p>
       </div>
       <StoreManager
         storeId={store.id}
         storeSlug={store.store_slug}
         storeProducts={storeProducts}
-        featuredVideoUrl={store.featured_video_url}
-        featuredVideoProductId={store.featured_video_product_id}
+        videos={videos}
+        maxVideos={maxStoreProducts}
       />
     </div>
   );

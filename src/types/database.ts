@@ -60,8 +60,6 @@ export interface Database {
           store_slug: string;
           intro_headline_prefix: string;
           intro_text: string | null;
-          featured_video_url: string | null;
-          featured_video_product_id: string | null;
           is_active: boolean;
           total_views: number;
           created_at: string;
@@ -267,6 +265,32 @@ export interface Database {
           settings: Json;
         };
         Update: Partial<Database["public"]["Tables"]["template_settings"]["Row"]>;
+        Relationships: [];
+      };
+      curator_store_videos: {
+        Row: {
+          id: string;
+          store_id: string;
+          video_url: string;
+          product_id: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["curator_store_videos"]["Row"]> & {
+          store_id: string;
+          video_url: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["curator_store_videos"]["Row"]>;
+        Relationships: [];
+      };
+      platform_settings: {
+        Row: {
+          id: string;
+          max_store_products: number;
+          updated_by: string | null;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["platform_settings"]["Row"]>;
+        Update: Partial<Database["public"]["Tables"]["platform_settings"]["Row"]>;
         Relationships: [];
       };
     };

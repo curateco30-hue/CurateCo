@@ -27,6 +27,7 @@ interface ProductGridProps {
   products: ProductCardData[];
   storeId: string;
   storeProductCount: number;
+  maxStoreProducts: number;
   showBrandName: boolean;
   showCommissionCap: boolean;
   commissionCapLabel: string;
@@ -34,12 +35,11 @@ interface ProductGridProps {
   emptyStateMessage: string;
 }
 
-const MAX_STORE_PRODUCTS = 3;
-
 function ProductGrid({
   products,
   storeId,
   storeProductCount,
+  maxStoreProducts,
   showBrandName,
   showCommissionCap,
   commissionCapLabel,
@@ -53,7 +53,7 @@ function ProductGrid({
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const [productCount, setProductCount] = useState(storeProductCount);
 
-  const storeIsFull = productCount >= MAX_STORE_PRODUCTS;
+  const storeIsFull = productCount >= maxStoreProducts;
 
   const openAddModal = (product: ProductCardData) => {
     setAddTarget(product);
@@ -129,7 +129,11 @@ function ProductGrid({
                   disabled={isAdded || (storeIsFull && !isAdded)}
                   onClick={() => openAddModal(product)}
                 >
-                  {isAdded ? "Added" : storeIsFull ? "Store Full (3/3)" : addToStoreLabel}
+                  {isAdded
+                    ? "Added"
+                    : storeIsFull
+                      ? `Store Full (${productCount}/${maxStoreProducts})`
+                      : addToStoreLabel}
                 </Button>
               </div>
             </Card>

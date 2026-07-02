@@ -7,6 +7,7 @@ import {
   Boxes,
   MessagesSquare,
   LayoutTemplate,
+  Settings,
 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -21,6 +22,7 @@ const links = [
   { href: "/admin/inventory", label: "Inventory", icon: <Boxes className="size-4.5" /> },
   { href: "/admin/support", label: "Support", icon: <MessagesSquare className="size-4.5" /> },
   { href: "/admin/templates", label: "Templates", icon: <LayoutTemplate className="size-4.5" /> },
+  { href: "/admin/settings", label: "Settings", icon: <Settings className="size-4.5" /> },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -57,7 +57,7 @@ export default async function ProductDetailPage({
 
   // brands RLS only allows owner-or-admin reads, so the brand name for a
   // public storefront visitor comes from the public-safe view instead.
-  const [{ data: brandProfile }, { data: relatedRaw }] = await Promise.all([
+  const [{ data: brandProfile }, { data: relatedRaw }, { data: videoRows }] = await Promise.all([
     store.supabase.from("brand_public_profile").select("business_name").eq("id", product.brand_id).single(),
     store.supabase
       .from("curator_store_products")
@@ -65,6 +65,7 @@ export default async function ProductDetailPage({
       .eq("store_id", store.id)
       .neq("product_id", id)
       .limit(2),
+    store.supabase.from("curator_store_videos").select("video_url").eq("store_id", store.id).eq("product_id", id),
     logAnalyticsEvent({
       eventType: "product_view",
       storeId: store.id,
@@ -74,6 +75,7 @@ export default async function ProductDetailPage({
   ]);
   const brandName = brandProfile?.business_name ?? "—";
   const finalPrice = product.selling_price * (1 + storeProduct.curator_commission_pct / 100);
+  const productVideos = (videoRows ?? []).map((v) => ({ videoUrl: v.video_url, productName: product.name }));
 
   const related = (relatedRaw ?? []).map((r) => {
     const p = r.products as unknown as { name: string; images: string[] | null; selling_price: number } | null;
@@ -85,8 +87,6 @@ export default async function ProductDetailPage({
       price: sellingPrice * (1 + r.curator_commission_pct / 100),
     };
   });
-
-  const isFeaturedVideoProduct = store.featuredVideoProductId === id && store.featuredVideoUrl;
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10 sm:px-12">
@@ -123,13 +123,9 @@ export default async function ProductDetailPage({
         </div>
       </div>
 
-      {isFeaturedVideoProduct && (
+      {productVideos.length > 0 && (
         <div className="mt-10">
-          <FeaturedVideo
-            videoUrl={store.featuredVideoUrl as string}
-            productName={product.name}
-            sectionTitle="Featured Pick"
-          />
+          <FeaturedVideo videos={productVideos} sectionTitle="Featured Pick" />
         </div>
       )}
 

@@ -19,8 +19,10 @@ export default async function CuratorStoreEditPage() {
         <StoreEditForm
           storeId={store.id}
           brandName={curator.brand_name}
+          brandColor={curator.brand_color}
           initialPrefix={store.intro_headline_prefix}
           initialIntroText={store.intro_text ?? ""}
+          initialPhotoUrl={curator.profile_photo_url}
         />
       </Card>
     </div>

@@ -1,5 +1,6 @@
 import { getCurrentCuratorOrRedirect } from "@/lib/queries/curator";
 import { getTemplateSettings } from "@/lib/queries/templates";
+import { getMaxStoreProducts } from "@/lib/queries/platformSettings";
 import { CuratorVideoShowcase, type VideoStore } from "@/components/curator/CuratorVideoShowcase";
 import { ProductGrid } from "@/components/curator/ProductGrid";
 
@@ -20,27 +21,28 @@ interface ProductListingSettings {
 
 export default async function CuratorProductsPage() {
   const { supabase, store } = await getCurrentCuratorOrRedirect();
-  const settings = (await getTemplateSettings("product_listing")) as ProductListingSettings;
 
-  const [{ data: products }, { count: storeProductCount }, { data: videoStores }] = await Promise.all([
-    supabase
-      .from("products")
-      .select(
-        "id, name, brand_id, base_price, curateco_commission_pct, max_curator_commission_cap_pct, selling_price, images",
-      )
-      .eq("status", "approved")
-      .eq("is_visible", true)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("curator_store_products")
-      .select("*", { count: "exact", head: true })
-      .eq("store_id", store.id),
-    supabase
-      .from("curator_stores")
-      .select("store_slug, featured_video_url, curator_id")
-      .not("featured_video_url", "is", null)
-      .eq("is_active", true),
-  ]);
+  const [settings, maxStoreProducts, { data: products }, { count: storeProductCount }, { data: videoRows }] =
+    await Promise.all([
+      getTemplateSettings("product_listing") as Promise<ProductListingSettings>,
+      getMaxStoreProducts(),
+      supabase
+        .from("products")
+        .select(
+          "id, name, brand_id, base_price, curateco_commission_pct, max_curator_commission_cap_pct, selling_price, images",
+        )
+        .eq("status", "approved")
+        .eq("is_visible", true)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("curator_store_products")
+        .select("*", { count: "exact", head: true })
+        .eq("store_id", store.id),
+      supabase
+        .from("curator_store_videos")
+        .select("video_url, curator_stores!inner(store_slug, curator_id, is_active)")
+        .eq("curator_stores.is_active", true),
+    ]);
 
   // brands/curators RLS only allows owner-or-admin reads, so brand/curator
   // names for other accounts come from the public-safe views instead.
@@ -61,17 +63,28 @@ export default async function CuratorProductsPage() {
     brand_name: brandNameById.get(p.brand_id) ?? "—",
   }));
 
-  const curatorIds = [...new Set((videoStores ?? []).map((s) => s.curator_id))];
+  const flatVideos = (videoRows ?? []).map((v) => {
+    const s = v.curator_stores as unknown as { store_slug: string; curator_id: string } | null;
+    return { storeSlug: s?.store_slug ?? "", curatorId: s?.curator_id ?? "", videoUrl: v.video_url };
+  });
+
+  const curatorIds = [...new Set(flatVideos.map((v) => v.curatorId))];
   const { data: curatorProfiles } = curatorIds.length
     ? await supabase.from("curator_public_profile").select("id, brand_name").in("id", curatorIds)
     : { data: [] as { id: string; brand_name: string }[] };
   const curatorNameById = new Map((curatorProfiles ?? []).map((c) => [c.id, c.brand_name]));
 
-  const videos: VideoStore[] = (videoStores ?? [])
-    .map((s) => ({
-      storeSlug: s.store_slug,
-      brandName: curatorNameById.get(s.curator_id) ?? "Curator",
-      videoUrl: s.featured_video_url as string,
+  // One video per curator, then randomly pick up to 3 curators to showcase.
+  const oneVideoPerCurator = new Map<string, (typeof flatVideos)[number]>();
+  for (const v of flatVideos.sort(() => Math.random() - 0.5)) {
+    if (!oneVideoPerCurator.has(v.curatorId)) oneVideoPerCurator.set(v.curatorId, v);
+  }
+
+  const videos: VideoStore[] = Array.from(oneVideoPerCurator.values())
+    .map((v) => ({
+      storeSlug: v.storeSlug,
+      brandName: curatorNameById.get(v.curatorId) ?? "Curator",
+      videoUrl: v.videoUrl,
     }))
     .sort(() => Math.random() - 0.5)
     .slice(0, 3);
@@ -93,6 +106,7 @@ export default async function CuratorProductsPage() {
         products={flatProducts}
         storeId={store.id}
         storeProductCount={storeProductCount ?? 0}
+        maxStoreProducts={maxStoreProducts}
         showBrandName={settings.productCard?.showBrandName !== false}
         showCommissionCap={settings.productCard?.showCommissionCap !== false}
         commissionCapLabel={settings.productCard?.commissionCapLabel || "Commission Cap"}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ExternalLink, Settings2, Trash2, PenLine } from "lucide-react";
+import { ExternalLink, Settings2, Trash2, PenLine, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -25,29 +25,36 @@ interface StoreProduct {
   whyCuratedNote: string | null;
 }
 
+interface StoreVideo {
+  id: string;
+  videoUrl: string;
+  productId: string | null;
+  productName: string | null;
+}
+
 interface StoreManagerProps {
   storeId: string;
   storeSlug: string;
   storeProducts: StoreProduct[];
-  featuredVideoUrl: string | null;
-  featuredVideoProductId: string | null;
+  videos: StoreVideo[];
+  maxVideos: number;
 }
 
 function StoreManager({
   storeId,
   storeSlug,
   storeProducts: initialProducts,
-  featuredVideoUrl,
-  featuredVideoProductId,
+  videos: initialVideos,
+  maxVideos,
 }: StoreManagerProps) {
   const supabase = createClient();
   const [products, setProducts] = useState(initialProducts);
+  const [videos, setVideos] = useState(initialVideos);
   const [noteTarget, setNoteTarget] = useState<StoreProduct | null>(null);
   const [noteText, setNoteText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [videoLink, setVideoLink] = useState(featuredVideoUrl ?? "");
-  const [videoProductId, setVideoProductId] = useState(featuredVideoProductId ?? "");
-  const [currentVideoUrl, setCurrentVideoUrl] = useState(featuredVideoUrl);
+  const [videoLink, setVideoLink] = useState("");
+  const [videoProductId, setVideoProductId] = useState("");
   const [isSavingVideo, setIsSavingVideo] = useState(false);
 
   const remove = async (product: StoreProduct) => {
@@ -89,28 +96,50 @@ function StoreManager({
     setNoteTarget(null);
   };
 
-  const saveVideoLink = async () => {
+  const addVideo = async () => {
     const trimmed = videoLink.trim();
-    if (!trimmed || !videoProductId) {
-      toast.error("Add an Instagram or TikTok link and choose a product to link it to.");
+    if (!trimmed) {
+      toast.error("Add an Instagram or TikTok link.");
       return;
     }
     if (getVideoEmbedInfo(trimmed).platform === "unknown") {
       toast.error("Enter a valid Instagram or TikTok link.");
       return;
     }
+    if (videos.length >= maxVideos) {
+      toast.error(`You can add up to ${maxVideos} videos.`);
+      return;
+    }
     setIsSavingVideo(true);
-    const { error } = await supabase
-      .from("curator_stores")
-      .update({ featured_video_url: trimmed, featured_video_product_id: videoProductId })
-      .eq("id", storeId);
+    const { data, error } = await supabase
+      .from("curator_store_videos")
+      .insert({ store_id: storeId, video_url: trimmed, product_id: videoProductId || null })
+      .select("id, video_url, product_id")
+      .single();
     setIsSavingVideo(false);
+    if (error || !data) {
+      toast.error(error?.message ?? "Failed to add video.");
+      return;
+    }
+    const linkedProduct = products.find((p) => p.productId === data.product_id);
+    setVideos((prev) => [
+      ...prev,
+      { id: data.id, videoUrl: data.video_url, productId: data.product_id, productName: linkedProduct?.name ?? null },
+    ]);
+    setVideoLink("");
+    setVideoProductId("");
+    toast.success("Video added.");
+  };
+
+  const removeVideo = async (video: StoreVideo) => {
+    if (!confirm("Remove this video from your store?")) return;
+    const { error } = await supabase.from("curator_store_videos").delete().eq("id", video.id);
     if (error) {
       toast.error(error.message);
       return;
     }
-    setCurrentVideoUrl(trimmed);
-    toast.success("Featured video updated.");
+    setVideos((prev) => prev.filter((v) => v.id !== video.id));
+    toast.success("Video removed.");
   };
 
   return (
@@ -173,32 +202,66 @@ function StoreManager({
       )}
 
       <Card className="p-6">
-        <p className="text-sm font-medium text-[#1A1A1A]">Featured Video</p>
-        <p className="mb-4 text-xs text-text-secondary">
-          Paste an Instagram Reel or TikTok link. It plays at the top of the product listing and
-          on your storefront.
-        </p>
-        {currentVideoUrl && <VideoEmbed url={currentVideoUrl} className="mb-4" />}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-          <Input
-            label="Instagram or TikTok Link"
-            placeholder="https://www.instagram.com/reel/..."
-            value={videoLink}
-            onChange={(e) => setVideoLink(e.target.value)}
-            className="flex-1"
-          />
-          <Select
-            label="Link to Product"
-            value={videoProductId}
-            onChange={(e) => setVideoProductId(e.target.value)}
-            options={products.map((p) => ({ label: p.name, value: p.productId }))}
-            placeholder="Choose a product"
-            className="sm:w-56"
-          />
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-[#1A1A1A]">Featured Videos</p>
+          <span className="text-xs text-text-muted">
+            {videos.length}/{maxVideos} used
+          </span>
         </div>
-        <Button onClick={saveVideoLink} isLoading={isSavingVideo} className="mt-4">
-          Save Video
-        </Button>
+        <p className="mb-4 text-xs text-text-secondary">
+          Paste Instagram Reel or TikTok links. They play on your storefront, below your products.
+        </p>
+
+        {videos.length > 0 && (
+          <div className="mb-5 flex flex-wrap gap-4">
+            {videos.map((video) => (
+              <div key={video.id} className="relative">
+                <VideoEmbed url={video.videoUrl} />
+                <button
+                  onClick={() => removeVideo(video)}
+                  aria-label="Remove video"
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white"
+                >
+                  <X className="size-3.5" />
+                </button>
+                {video.productName && (
+                  <p className="mt-1.5 max-w-[280px] text-xs text-text-muted">
+                    Featuring: {video.productName}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {videos.length < maxVideos ? (
+          <>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+              <Input
+                label="Instagram or TikTok Link"
+                placeholder="https://www.instagram.com/reel/..."
+                value={videoLink}
+                onChange={(e) => setVideoLink(e.target.value)}
+                className="flex-1"
+              />
+              <Select
+                label="Link to Product (optional)"
+                value={videoProductId}
+                onChange={(e) => setVideoProductId(e.target.value)}
+                options={products.map((p) => ({ label: p.name, value: p.productId }))}
+                placeholder="Choose a product"
+                className="sm:w-56"
+              />
+            </div>
+            <Button onClick={addVideo} isLoading={isSavingVideo} className="mt-4">
+              Add Video
+            </Button>
+          </>
+        ) : (
+          <p className="text-xs text-text-muted">
+            You&apos;ve reached your limit of {maxVideos} videos. Remove one to add another.
+          </p>
+        )}
       </Card>
 
       <Modal isOpen={!!noteTarget} onClose={() => setNoteTarget(null)} title="Why I Curated This">

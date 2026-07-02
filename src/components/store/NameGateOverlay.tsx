@@ -49,7 +49,7 @@ function NameGateOverlay({ storeSlug, curatorName, curatorPhotoUrl, brandColor, 
           autoFocus
         />
         <Button type="submit" size="lg" className="w-full">
-          Continue to {curatorName}&apos;s Store
+          Shop My Taste
         </Button>
       </form>
     </div>

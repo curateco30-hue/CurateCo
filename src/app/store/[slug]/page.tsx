@@ -29,13 +29,18 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
   const store = await getStoreBySlug(slug);
   if (!store) notFound();
 
-  const [settings, { data: storeProducts }] = await Promise.all([
+  const [settings, { data: storeProducts }, { data: videoRows }] = await Promise.all([
     getTemplateSettings("storefront") as Promise<StorefrontSettings>,
     store.supabase
       .from("curator_store_products")
       .select("id, product_id, curator_commission_pct, products(name, images, selling_price, sizes, colors)")
       .eq("store_id", store.id)
       .order("added_at", { ascending: true }),
+    store.supabase
+      .from("curator_store_videos")
+      .select("video_url, product_id")
+      .eq("store_id", store.id)
+      .order("created_at", { ascending: true }),
     logAnalyticsEvent({ eventType: "store_view", storeId: store.id, curatorId: store.curatorId }),
   ]);
 
@@ -60,10 +65,10 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
     };
   });
 
-  const featuredProductName =
-    store.featuredVideoProductId != null
-      ? products.find((p) => p.productId === store.featuredVideoProductId)?.name ?? null
-      : null;
+  const videos = (videoRows ?? []).map((v) => ({
+    videoUrl: v.video_url,
+    productName: v.product_id ? products.find((p) => p.productId === v.product_id)?.name ?? null : null,
+  }));
 
   return (
     <NameGateOverlay
@@ -86,14 +91,6 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
           </p>
           <p className="mt-2 max-w-2xl text-base text-text-secondary">{store.introText}</p>
         </div>
-      )}
-
-      {store.featuredVideoUrl && (
-        <FeaturedVideo
-          videoUrl={store.featuredVideoUrl}
-          productName={featuredProductName}
-          sectionTitle={settings.featuredVideo?.sectionTitle ?? "Featured Pick"}
-        />
       )}
 
       <div className="px-6 py-10 sm:px-12">
@@ -129,6 +126,8 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
           </div>
         )}
       </div>
+
+      <FeaturedVideo videos={videos} sectionTitle={settings.featuredVideo?.sectionTitle ?? "Featured Picks"} />
 
       {settings.footer?.text && (
         <div className="border-t border-border px-6 py-8 text-center sm:px-12">
